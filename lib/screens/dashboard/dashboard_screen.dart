@@ -4,6 +4,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/auth_service.dart';
 import '../../widgets/stat_card.dart';
 import '../../widgets/feature_card.dart';
+import '../profile/profile_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -26,9 +27,22 @@ class DashboardScreen extends StatelessWidget {
         ),
         actions: [
           IconButton(
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ProfileScreen(),
+      ),
+    );
+  },
+  icon: const Icon(Icons.person_outline),
+  tooltip: 'My Profile',
+),
+          IconButton(
             onPressed: () async {
               await AuthService().signOut();
             },
+            
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
           ),
