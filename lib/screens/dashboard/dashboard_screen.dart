@@ -1,3 +1,4 @@
+import 'package:ai_interview_prep/screens/interview/interview_screen.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
@@ -203,12 +204,20 @@ class DashboardScreen extends StatelessWidget {
 
             const SizedBox(height: 15),
 
-            const FeatureCard(
-              title: 'AI Mock Interview',
-              description: 'Practice real interview questions with AI.',
-              icon: Icons.record_voice_over,
-              color: Color(0xFF6D4AFF),
-            ),
+            FeatureCard(
+            title: 'AI Mock Interview',
+            description: 'Practice real interview questions with AI.',
+            icon: Icons.record_voice_over,
+            color: Color(0xFF6D4AFF),
+            onTap: () {
+              Navigator.push(
+                context,
+              MaterialPageRoute(
+                builder: (context) => const InterviewScreen(),
+      ),
+    );
+  },
+),
 
             const FeatureCard(
               title: 'MCQ Practice',
