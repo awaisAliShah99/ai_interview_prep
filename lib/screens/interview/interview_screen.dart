@@ -24,6 +24,9 @@ class _InterviewScreenState extends State<InterviewScreen> {
   final SpeechToTextService _speechService = SpeechToTextService();
 
   final Map<int, String> _recognizedAnswers = {};
+  final Map<int, String> _evaluations = {};
+
+  bool _isEvaluating = false;
 
   bool _isListening = false;
   bool _speechAvailable = false;
@@ -94,6 +97,47 @@ class _InterviewScreenState extends State<InterviewScreen> {
     });
   }
 
+  Future<void> _evaluateAnswer(int index) async {
+    final answer = _recognizedAnswers[index]?.trim() ?? '';
+
+    if (answer.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please speak your answer first')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isEvaluating = true;
+    });
+
+    try {
+      final evaluation = await _aiService.evaluateAnswer(
+        question: _questions[index],
+        answer: answer,
+        targetRole: _roleController.text.trim(),
+        experience: _experienceController.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _evaluations[index] = evaluation;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Evaluation error: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isEvaluating = false;
+        });
+      }
+    }
+  }
+
   Future<void> _generateQuestions() async {
     if (_roleController.text.trim().isEmpty ||
         _experienceController.text.trim().isEmpty) {
@@ -107,6 +151,8 @@ class _InterviewScreenState extends State<InterviewScreen> {
       _isGenerating = true;
       _questions = [];
       _recordings.clear();
+      _recognizedAnswers.clear();
+      _evaluations.clear();
     });
 
     try {
@@ -266,7 +312,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: _isGenerating || _isRecording
+                onPressed: _isGenerating || _isRecording || _isListening
                     ? null
                     : _generateQuestions,
                 icon: const Icon(Icons.auto_awesome),
@@ -350,6 +396,47 @@ class _InterviewScreenState extends State<InterviewScreen> {
                             child: Text(_recognizedAnswers[i]!),
                           ),
                         ],
+
+                        if (_recognizedAnswers.containsKey(i) &&
+                            _recognizedAnswers[i]!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _isEvaluating || _isListening
+                                  ? null
+                                  : () => _evaluateAnswer(i),
+                              icon: const Icon(Icons.psychology),
+                              label: Text(
+                                _isEvaluating
+                                    ? 'AI Evaluating Answer...'
+                                    : 'Evaluate Answer with AI',
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        if (_evaluations.containsKey(i)) ...[
+                          const SizedBox(height: 12),
+                          const Text(
+                            'AI Evaluation',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: SelectableText(_evaluations[i]!),
+                          ),
+                        ],
+
                         if (_isRecording && _recordingQuestionIndex == i) ...[
                           const Text(
                             'Recording in progress...',
