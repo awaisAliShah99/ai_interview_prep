@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/ai_interview_service.dart';
 import '../../core/services/audio_recording_service.dart';
 import '../../core/services/audio_playback_service.dart';
+import '../../core/services/speech_to_text_service.dart';
 
 class InterviewScreen extends StatefulWidget {
   const InterviewScreen({super.key});
@@ -19,10 +19,15 @@ class _InterviewScreenState extends State<InterviewScreen> {
   final _experienceController = TextEditingController();
 
   final AiInterviewService _aiService = AiInterviewService();
-  final AudioRecordingService _recordingService =
-      AudioRecordingService();
-  final AudioPlaybackService _playbackService =
-      AudioPlaybackService();
+  final AudioRecordingService _recordingService = AudioRecordingService();
+  final AudioPlaybackService _playbackService = AudioPlaybackService();
+  final SpeechToTextService _speechService = SpeechToTextService();
+
+  final Map<int, String> _recognizedAnswers = {};
+
+  bool _isListening = false;
+  bool _speechAvailable = false;
+  int? _listeningQuestionIndex;
 
   List<String> _questions = [];
   final Map<int, String> _recordings = {};
@@ -30,14 +35,70 @@ class _InterviewScreenState extends State<InterviewScreen> {
   bool _isGenerating = false;
   bool _isRecording = false;
   int? _recordingQuestionIndex;
+  @override
+  void initState() {
+    super.initState();
+    _initializeSpeech();
+  }
+
+  Future<void> _initializeSpeech() async {
+    final available = await _speechService.initialize();
+
+    if (!mounted) return;
+
+    setState(() {
+      _speechAvailable = available;
+    });
+  }
+
+  Future<void> _startListening(int index) async {
+    if (!_speechAvailable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Speech recognition is not available')),
+      );
+      return;
+    }
+
+    if (_isRecording) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stop audio recording first')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isListening = true;
+      _listeningQuestionIndex = index;
+      _recognizedAnswers[index] = '';
+    });
+
+    await _speechService.startListening(
+      onText: (text) {
+        if (!mounted) return;
+
+        setState(() {
+          _recognizedAnswers[index] = text;
+        });
+      },
+    );
+  }
+
+  Future<void> _stopListening() async {
+    await _speechService.stopListening();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+      _listeningQuestionIndex = null;
+    });
+  }
 
   Future<void> _generateQuestions() async {
     if (_roleController.text.trim().isEmpty ||
         _experienceController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your role and experience'),
-        ),
+        const SnackBar(content: Text('Please enter your role and experience')),
       );
       return;
     }
@@ -62,9 +123,9 @@ class _InterviewScreenState extends State<InterviewScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error generating questions: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error generating questions: $e')));
     } finally {
       if (mounted) {
         setState(() {
@@ -84,9 +145,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
 
       if (!started) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Microphone permission is required'),
-          ),
+          const SnackBar(content: Text('Microphone permission is required')),
         );
         return;
       }
@@ -98,9 +157,8 @@ class _InterviewScreenState extends State<InterviewScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recording error: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Recording error: $e')));
     }
   }
 
@@ -120,16 +178,14 @@ class _InterviewScreenState extends State<InterviewScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Recording saved successfully!'),
-        ),
+        const SnackBar(content: Text('Recording saved successfully!')),
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error stopping recording: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error stopping recording: $e')));
     }
   }
 
@@ -139,9 +195,8 @@ class _InterviewScreenState extends State<InterviewScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Playback error: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Playback error: $e')));
     }
   }
 
@@ -156,6 +211,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
 
     unawaited(_recordingService.dispose());
     unawaited(_playbackService.dispose());
+    unawaited(_speechService.stopListening());
 
     super.dispose();
   }
@@ -175,10 +231,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
           children: [
             const Text(
               'Prepare for Your Interview',
-              style: TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -230,10 +283,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
             if (_questions.isNotEmpty) ...[
               const Text(
                 'Your Interview Questions',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 12),
 
@@ -247,16 +297,60 @@ class _InterviewScreenState extends State<InterviewScreen> {
                       children: [
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            child: Text('${i + 1}'),
-                          ),
+                          leading: CircleAvatar(child: Text('${i + 1}')),
                           title: Text(_questions[i]),
                         ),
 
                         const Divider(),
+                        if (_isListening && _listeningQuestionIndex == i) ...[
+                          const Text(
+                            'Listening... Speak your answer',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _stopListening,
+                              icon: const Icon(Icons.stop),
+                              label: const Text('Stop Speaking'),
+                            ),
+                          ),
+                        ] else ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _isRecording || _isListening
+                                  ? null
+                                  : () => _startListening(i),
+                              icon: const Icon(Icons.mic),
+                              label: const Text('Speak Answer (Live Text)'),
+                            ),
+                          ),
+                        ],
 
-                        if (_isRecording &&
-                            _recordingQuestionIndex == i) ...[
+                        if (_recognizedAnswers.containsKey(i) &&
+                            _recognizedAnswers[i]!.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Your Spoken Answer:',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(_recognizedAnswers[i]!),
+                          ),
+                        ],
+                        if (_isRecording && _recordingQuestionIndex == i) ...[
                           const Text(
                             'Recording in progress...',
                             style: TextStyle(
@@ -281,7 +375,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton.icon(
-                              onPressed: _isRecording
+                              onPressed: _isRecording || _isListening
                                   ? null
                                   : () => _startRecording(i),
                               icon: const Icon(Icons.mic),
@@ -293,9 +387,7 @@ class _InterviewScreenState extends State<InterviewScreen> {
                             const SizedBox(height: 8),
                             const Text(
                               'Answer recorded successfully',
-                              style: TextStyle(
-                                color: Colors.green,
-                              ),
+                              style: TextStyle(color: Colors.green),
                             ),
                             Row(
                               children: [
